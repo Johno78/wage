@@ -389,9 +389,9 @@
   // Default example shifts — fully editable, nothing personal.
   // mode: "off" | "work" | "holiday"
   const DEFAULTS = {
-    Monday:    { mode:"off",  start:"09:00", end:"17:00", brk:0,  holidayHours:7.5 },
-    Tuesday:   { mode:"off",  start:"09:00", end:"17:00", brk:0,  holidayHours:7.5 },
-    Wednesday: { mode:"off",  start:"09:00", end:"17:00", brk:0,  holidayHours:7.5 },
+    Monday:    { mode:"off",  start:"17:30", end:"22:00", brk:0,  holidayHours:4.5 },
+    Tuesday:   { mode:"off",  start:"17:30", end:"22:00", brk:0,  holidayHours:4.5 },
+    Wednesday: { mode:"off",  start:"17:30", end:"22:00", brk:0,  holidayHours:4.5 },
     Thursday:  { mode:"work", start:"18:30", end:"23:00", brk:0,  holidayHours:4.5 },
     Friday:    { mode:"work", start:"17:30", end:"22:00", brk:0,  holidayHours:4.5 },
     Saturday:  { mode:"work", start:"17:30", end:"22:00", brk:0,  holidayHours:4.5 },
@@ -562,7 +562,14 @@
     const btn = e.target.closest("button[data-mode]");
     if(!btn) return;
     const dayName = btn.dataset.day;
-    state.days[dayName].mode = btn.dataset.mode;
+    const newMode = btn.dataset.mode;
+    const day = state.days[dayName];
+    if(newMode === "holiday" && day.mode !== "holiday"){
+      // Prefill holiday hours from this day's own shift pattern (start/end/break)
+      const shiftHours = dayHours(day);
+      day.holidayHours = shiftHours > 0 ? shiftHours : (day.holidayHours || 4.5);
+    }
+    day.mode = newMode;
     render();
   });
 

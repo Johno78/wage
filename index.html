@@ -90,6 +90,16 @@
     text-align:right;
   }
   input[type="number"].rate:focus{outline:none;border-bottom-color:var(--amber);}
+  input[type="date"].week-date{
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--line);
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    font-size:15px;
+    padding:2px 0;
+  }
+  input[type="date"].week-date:focus{outline:none;border-bottom-color:var(--amber);}
 
   .day{
     background:var(--panel);
@@ -214,6 +224,41 @@
   .summary-value.pay{color:var(--amber);font-size:26px;}
   .summary-divider{width:1px;height:36px;background:var(--line);}
 
+  .export-row{
+    display:flex;
+    gap:10px;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+  .export-btn{
+    flex:1;
+    min-width:150px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    padding:12px 14px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .export-btn:hover{border-color:var(--amber);}
+  .export-btn.primary{
+    background:var(--amber);
+    color:#1a1408;
+    border-color:var(--amber);
+  }
+  .export-btn.primary:hover{opacity:.9;}
+  .export-hint{
+    text-align:center;
+    font-size:12px;
+    color:var(--teal);
+    margin:10px 0 0;
+    min-height:16px;
+  }
+
   footer{
     text-align:center;
     margin-top:28px;
@@ -256,6 +301,10 @@
 
   <div class="rate-card">
     <div>
+      <label for="weekStartInput">Week starting</label>
+      <input type="date" id="weekStartInput" class="week-date">
+    </div>
+    <div>
       <label for="rateInput">Hourly rate</label>
       <div class="rate-input-group">
         <span>£</span>
@@ -285,6 +334,12 @@
       <span class="summary-label" id="payBreakdown" style="text-transform:none;font-size:11px;"></span>
     </div>
   </div>
+
+  <div class="export-row">
+    <button id="shareBtn" class="export-btn primary">Save / Share week</button>
+    <button id="downloadBtn" class="export-btn">Download as text file</button>
+  </div>
+  <p class="export-hint" id="exportHint"></p>
 
   <footer>
     Numbers only, nothing personal stored beyond your own browser.
@@ -325,6 +380,7 @@
   let state = loadState();
   rateInput.value = state.rate;
   locationInput.value = state.location ?? 0.90;
+  document.getElementById("weekStartInput").value = state.weekStart || "";
 
   function timeToMinutes(t){
     if(!t) return null;
@@ -444,6 +500,90 @@
     state = { rate: rateInput.value || 15.01, location: locationInput.value || 0.90, days: JSON.parse(JSON.stringify(DEFAULTS)) };
     Object.keys(state.days).forEach(d => state.days[d].on = false);
     render();
+  });
+
+  document.getElementById("weekStartInput").addEventListener("input", e=>{
+    state.weekStart = e.target.value;
+    save();
+  });
+
+  function buildSummaryText(){
+    const rate = Number(rateInput.value)||0;
+    const location = Number(locationInput.value)||0;
+    let totalHours = 0;
+    const lines = [];
+
+    DAY_NAMES.forEach(name=>{
+      const day = state.days[name];
+      if(day.on){
+        const h = dayHours(day);
+        totalHours += h;
+        const brk = Number(day.brk)||0;
+        const brkTxt = brk ? ` (-${brk}min break)` : "";
+        lines.push(`${name.padEnd(10)} ${day.start}-${day.end}${brkTxt}  ->  ${fmtHours(h)} hrs`);
+      }else{
+        lines.push(`${name.padEnd(10)} Off`);
+      }
+    });
+
+    const basePay = totalHours*rate;
+    const locationPay = totalHours*location;
+    const total = basePay+locationPay;
+    const weekStart = state.weekStart ? new Date(state.weekStart+"T00:00:00") : null;
+    const weekLabel = weekStart
+      ? "Week starting " + weekStart.toLocaleDateString("en-GB",{ day:"numeric", month:"long", year:"numeric" })
+      : "Weekly Earnings";
+
+    return [
+      weekLabel,
+      "",
+      ...lines,
+      "",
+      `Total hours: ${fmtHours(totalHours)}`,
+      `Rate: £${rate.toFixed(2)}/hr + £${location.toFixed(2)}/hr location`,
+      `Base pay: £${basePay.toFixed(2)}`,
+      `Location pay: £${locationPay.toFixed(2)}`,
+      `Total pay: £${total.toFixed(2)}`,
+    ].join("\n");
+  }
+
+  function showHint(msg){
+    const el = document.getElementById("exportHint");
+    el.textContent = msg;
+    setTimeout(()=>{ if(el.textContent===msg) el.textContent = ""; }, 3000);
+  }
+
+  document.getElementById("shareBtn").addEventListener("click", async ()=>{
+    const text = buildSummaryText();
+    if(navigator.share){
+      try{
+        await navigator.share({ title: "Weekly Earnings", text });
+        return;
+      }catch(err){
+        if(err && err.name === "AbortError") return; // user cancelled
+      }
+    }
+    try{
+      await navigator.clipboard.writeText(text);
+      showHint("Copied - paste into Notes or anywhere you like.");
+    }catch(err){
+      showHint("Couldn't open the share sheet or copy - try Download instead.");
+    }
+  });
+
+  document.getElementById("downloadBtn").addEventListener("click", ()=>{
+    const text = buildSummaryText();
+    const weekStart = state.weekStart || "week";
+    const blob = new Blob([text], { type:"text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `earnings-${weekStart}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showHint('Downloaded - on iPhone, choose "Save to Files" when prompted.');
   });
 
   render();

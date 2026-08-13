@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Earnings Calculator</title>
+<style>
+  :root{
+    --ink:#14161c;
+    --panel:#1e222c;
+    --panel-2:#262b37;
+    --line:#333949;
+    --text:#eceef2;
+    --muted:#8b93a7;
+    --amber:#f2a63d;
+    --amber-dim:#f2a63d33;
+    --teal:#5ec8b0;
+    --red:#e0616b;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    min-height:100vh;
+    padding:32px 16px 80px;
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+
+  header{margin-bottom:28px;}
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .brand-icon{width:20px;height:20px;flex:none;}
+  .brand-label{
+    font-family:'JetBrains Mono','Courier New',monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono','Courier New',monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--amber);
+    margin:0 0 8px;
+  }
+  h1{
+    font-family:'Space Grotesk','Inter',sans-serif;
+    font-size:30px;
+    font-weight:700;
+    letter-spacing:-.01em;
+    margin:0 0 6px;
+  }
+  .sub{color:var(--muted);font-size:14px;line-height:1.5;margin:0;}
+
+  .rate-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:20px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+  }
+  .rate-card > div{display:flex;flex-direction:column;gap:4px;}
+  .rate-card label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+  .rate-input-group{display:flex;align-items:baseline;gap:6px;}
+  .rate-input-group span{font-family:'JetBrains Mono',monospace;font-size:18px;color:var(--muted);}
+  input[type="number"].rate{
+    background:transparent;
+    border:none;
+    border-bottom:1px solid var(--line);
+    color:var(--amber);
+    font-family:'JetBrains Mono',monospace;
+    font-size:22px;
+    font-weight:700;
+    width:90px;
+    padding:2px 0;
+    text-align:right;
+  }
+  input[type="number"].rate:focus{outline:none;border-bottom-color:var(--amber);}
+
+  .day{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    margin-bottom:10px;
+    transition:border-color .15s, opacity .15s;
+  }
+  .day.off{opacity:.45;}
+  .day-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:10px;
+  }
+  .day-name{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:15px;
+  }
+  .toggle{
+    position:relative;
+    width:34px;height:20px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    cursor:pointer;
+    flex:none;
+    appearance:none;
+    -webkit-appearance:none;
+  }
+  .toggle:checked{background:var(--amber-dim);border-color:var(--amber);}
+  .toggle::after{
+    content:'';
+    position:absolute;
+    top:2px;left:2px;
+    width:14px;height:14px;
+    background:var(--muted);
+    border-radius:50%;
+    transition:transform .15s, background .15s;
+  }
+  .toggle:checked::after{transform:translateX(14px);background:var(--amber);}
+
+  .day-hours{
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    color:var(--teal);
+    white-space:nowrap;
+  }
+  .day-fields{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .field label{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+  input[type="time"], input[type="number"].brk{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    font-size:13px;
+    padding:6px 8px;
+    width:100px;
+  }
+  input[type="number"].brk{width:70px;}
+  input[type="time"]:focus, input[type="number"].brk:focus{outline:none;border-color:var(--amber);}
+
+  .bar{
+    margin-top:10px;
+    height:14px;
+    background:var(--panel-2);
+    border-radius:3px;
+    position:relative;
+    overflow:hidden;
+  }
+  .bar-fill{
+    position:absolute;
+    top:0;bottom:0;
+    background:linear-gradient(90deg,var(--amber),var(--teal));
+    border-radius:3px;
+    transition:left .15s, width .15s;
+  }
+  .bar-ticks{
+    position:absolute;
+    inset:0;
+    display:flex;
+  }
+  .bar-ticks span{
+    flex:1;
+    border-right:1px solid #ffffff0f;
+  }
+  .bar-ticks span:last-child{border-right:none;}
+
+  .summary{
+    position:sticky;
+    bottom:16px;
+    margin-top:24px;
+    background:var(--panel);
+    border:1px solid var(--amber);
+    border-radius:var(--radius);
+    padding:18px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    box-shadow:0 10px 30px -10px #000a;
+  }
+  .summary-block{display:flex;flex-direction:column;gap:2px;}
+  .summary-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .summary-value{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;}
+  .summary-value.pay{color:var(--amber);font-size:26px;}
+  .summary-divider{width:1px;height:36px;background:var(--line);}
+
+  footer{
+    text-align:center;
+    margin-top:28px;
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.6;
+  }
+  footer button{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:6px;
+    cursor:pointer;
+    margin-top:10px;
+  }
+  footer button:hover{border-color:var(--amber);color:var(--amber);}
+
+  @media (max-width:420px){
+    .day-fields{gap:8px;}
+    input[type="time"]{width:88px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="17" stroke="#f2a63d" stroke-width="2.5"/>
+        <path d="M20 10v10l7 4" stroke="#5ec8b0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-label">For Tesco Colleagues</span>
+    </div>
+    <p class="eyebrow">Timesheet → Pay</p>
+    <h1>Weekly Earnings</h1>
+    <p class="sub">Set your hourly rate, mark the days you're working, and enter start / finish times. Your pay updates as you go.</p>
+  </header>
+
+  <div class="rate-card">
+    <div>
+      <label for="rateInput">Hourly rate</label>
+      <div class="rate-input-group">
+        <span>£</span>
+        <input type="number" id="rateInput" class="rate" step="0.01" min="0" value="15.01">
+      </div>
+    </div>
+    <div>
+      <label for="locationInput">+ Location pay /hr</label>
+      <div class="rate-input-group">
+        <span>£</span>
+        <input type="number" id="locationInput" class="rate" step="0.01" min="0" value="0.90">
+      </div>
+    </div>
+  </div>
+
+  <div id="days"></div>
+
+  <div class="summary">
+    <div class="summary-block">
+      <span class="summary-label">Hours</span>
+      <span class="summary-value" id="totalHours">0.0</span>
+    </div>
+    <div class="summary-divider"></div>
+    <div class="summary-block">
+      <span class="summary-label">Total pay</span>
+      <span class="summary-value pay" id="totalPay">£0.00</span>
+      <span class="summary-label" id="payBreakdown" style="text-transform:none;font-size:11px;"></span>
+    </div>
+  </div>
+
+  <footer>
+    Numbers only, nothing personal stored beyond your own browser.
+    <br>
+    <button id="resetBtn">Reset to blank week</button>
+  </footer>
+</div>
+
+<script>
+  const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+  // Default example shifts — fully editable, nothing personal.
+  const DEFAULTS = {
+    Monday:    { on:false, start:"09:00", end:"17:00", brk:0 },
+    Tuesday:   { on:false, start:"09:00", end:"17:00", brk:0 },
+    Wednesday: { on:false, start:"09:00", end:"17:00", brk:0 },
+    Thursday:  { on:true,  start:"18:30", end:"23:00", brk:0 },
+    Friday:    { on:true,  start:"17:30", end:"22:00", brk:0 },
+    Saturday:  { on:true,  start:"17:30", end:"22:00", brk:0 },
+    Sunday:    { on:true,  start:"14:00", end:"22:00", brk:60 },
+  };
+
+  const STORAGE_KEY = "weekly-earnings-calculator-v1";
+  const daysEl = document.getElementById("days");
+  const rateInput = document.getElementById("rateInput");
+  const locationInput = document.getElementById("locationInput");
+  const totalHoursEl = document.getElementById("totalHours");
+  const totalPayEl = document.getElementById("totalPay");
+
+  function loadState(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if(saved && saved.days && saved.rate) return saved;
+    }catch(e){}
+    return { rate: 15.01, location: 0.90, days: JSON.parse(JSON.stringify(DEFAULTS)) };
+  }
+
+  let state = loadState();
+  rateInput.value = state.rate;
+  locationInput.value = state.location ?? 0.90;
+
+  function timeToMinutes(t){
+    if(!t) return null;
+    const [h,m] = t.split(":").map(Number);
+    return h*60+m;
+  }
+
+  function dayHours(day){
+    const startM = timeToMinutes(day.start);
+    const endM = timeToMinutes(day.end);
+    if(startM === null || endM === null) return 0;
+    let diff = endM - startM;
+    if(diff < 0) diff += 24*60; // overnight shift
+    diff -= (Number(day.brk)||0);
+    return Math.max(diff,0)/60;
+  }
+
+  function fmtHours(h){
+    return h.toFixed(2).replace(/\.00$/,".0");
+  }
+
+  function render(){
+    daysEl.innerHTML = "";
+    DAY_NAMES.forEach(name=>{
+      const day = state.days[name];
+      const hours = day.on ? dayHours(day) : 0;
+
+      const card = document.createElement("div");
+      card.className = "day" + (day.on ? "" : " off");
+
+      const startM = timeToMinutes(day.start) ?? 0;
+      let endM = timeToMinutes(day.end) ?? 0;
+      if(endM < startM) endM += 24*60;
+      const barLeft = (startM/1440*100).toFixed(2);
+      const barWidth = Math.max(((endM-startM)/1440*100),1).toFixed(2);
+
+      card.innerHTML = `
+        <div class="day-top">
+          <div class="day-name">
+            <input type="checkbox" class="toggle" data-day="${name}" data-field="on" ${day.on?"checked":""}>
+            ${name}
+          </div>
+          <div class="day-hours">${day.on ? fmtHours(hours)+" hrs" : "Off"}</div>
+        </div>
+        <div class="day-fields">
+          <div class="field">
+            <label>Start</label>
+            <input type="time" data-day="${name}" data-field="start" value="${day.start}">
+          </div>
+          <div class="field">
+            <label>Finish</label>
+            <input type="time" data-day="${name}" data-field="end" value="${day.end}">
+          </div>
+          <div class="field">
+            <label>Unpaid break (min)</label>
+            <input type="number" class="brk" min="0" step="5" data-day="${name}" data-field="brk" value="${day.brk}">
+          </div>
+        </div>
+        <div class="bar">
+          <div class="bar-ticks"><span></span><span></span><span></span><span></span></div>
+          <div class="bar-fill" style="left:${barLeft}%;width:${barWidth}%"></div>
+        </div>
+      `;
+      daysEl.appendChild(card);
+    });
+
+    // total
+    let totalHours = 0;
+    DAY_NAMES.forEach(name=>{
+      const day = state.days[name];
+      if(day.on) totalHours += dayHours(day);
+    });
+    const rate = Number(rateInput.value)||0;
+    const location = Number(locationInput.value)||0;
+    const basePay = totalHours*rate;
+    const locationPay = totalHours*location;
+    totalHoursEl.textContent = fmtHours(totalHours);
+    totalPayEl.textContent = "£" + (basePay+locationPay).toFixed(2);
+    document.getElementById("payBreakdown").textContent =
+      `£${basePay.toFixed(2)} base + £${locationPay.toFixed(2)} location`;
+
+    save();
+  }
+
+  function save(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }catch(e){}
+  }
+
+  daysEl.addEventListener("change", e=>{
+    const t = e.target;
+    const dayName = t.dataset.day;
+    const field = t.dataset.field;
+    if(!dayName) return;
+    if(field === "on"){
+      state.days[dayName].on = t.checked;
+    }else if(field === "brk"){
+      state.days[dayName].brk = t.value;
+    }else{
+      state.days[dayName][field] = t.value;
+    }
+    render();
+  });
+
+  rateInput.addEventListener("input", ()=>{
+    state.rate = rateInput.value;
+    render();
+  });
+
+  locationInput.addEventListener("input", ()=>{
+    state.location = locationInput.value;
+    render();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", ()=>{
+    state = { rate: rateInput.value || 15.01, location: locationInput.value || 0.90, days: JSON.parse(JSON.stringify(DEFAULTS)) };
+    Object.keys(state.days).forEach(d => state.days[d].on = false);
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

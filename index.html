@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Weekly Earnings">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
 <title>Weekly Earnings Calculator</title>
 <style>
   :root{
@@ -321,7 +325,7 @@
         <circle cx="20" cy="20" r="17" stroke="#f2a63d" stroke-width="2.5"/>
         <path d="M20 10v10l7 4" stroke="#5ec8b0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <span class="brand-label">For Tesco Colleagues</span>
+      <span class="brand-label">Timesheet</span>
     </div>
     <p class="eyebrow">Timesheet → Pay</p>
     <h1>Weekly Earnings</h1>

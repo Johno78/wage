@@ -257,6 +257,21 @@
   .summary-value.pay{color:var(--amber);font-size:26px;}
   .summary-divider{width:1px;height:36px;background:var(--line);}
 
+  .contracted-banner{
+    margin-top:10px;
+    padding:12px 16px;
+    border-radius:8px;
+    font-size:13px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .contracted-banner.over{background:var(--teal-dim,#5ec8b033);border:1px solid var(--teal);color:var(--teal);}
+  .contracted-banner.under{background:var(--red-dim,#e0616b33);border:1px solid var(--red);color:var(--red);}
+  .contracted-banner.match{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);}
+  .contracted-banner .cb-value{font-family:'JetBrains Mono',monospace;font-weight:700;}
+
   .export-row{
     display:flex;
     gap:10px;
@@ -351,7 +366,16 @@
         <input type="number" id="locationInput" class="rate" step="0.01" min="0" value="0.90">
       </div>
     </div>
+    <div>
+      <label for="contractedHoursInput">Contracted hours /wk</label>
+      <input type="number" id="contractedHoursInput" class="week-date" step="0.5" min="0" placeholder="e.g. 20.5" style="width:100px;">
+    </div>
   </div>
+
+  <label class="options-row">
+    <input type="checkbox" id="roundClockInput" checked>
+    Round to 15-min clocking blocks (3 min grace: late arrivals within grace round down, early finishes within grace round up — otherwise it rounds against you)
+  </label>
 
   <div id="days"></div>
 
@@ -373,6 +397,8 @@
       <span class="summary-label" id="payBreakdown" style="text-transform:none;font-size:11px;"></span>
     </div>
   </div>
+
+  <div id="contractedBanner" style="display:none;"></div>
 
   <div class="export-row">
     <button id="shareBtn" class="export-btn primary">Save / Share week</button>
@@ -407,6 +433,8 @@
   const rateInput = document.getElementById("rateInput");
   const locationInput = document.getElementById("locationInput");
   const holidayLocationInput = document.getElementById("holidayLocationInput");
+  const roundClockInput = document.getElementById("roundClockInput");
+  const contractedHoursInput = document.getElementById("contractedHoursInput");
   const totalHoursEl = document.getElementById("totalHours");
   const totalPayEl = document.getElementById("totalPay");
 
@@ -427,10 +455,11 @@
           saved.days[name] = migrateDay(saved.days[name] || JSON.parse(JSON.stringify(DEFAULTS[name])));
         });
         if(saved.includeLocationOnHoliday === undefined) saved.includeLocationOnHoliday = true;
+        if(saved.roundClockTimes === undefined) saved.roundClockTimes = true;
         return saved;
       }
     }catch(e){}
-    return { rate: 15.01, location: 0.90, includeLocationOnHoliday: true, days: JSON.parse(JSON.stringify(DEFAULTS)) };
+    return { rate: 15.01, location: 0.90, includeLocationOnHoliday: true, roundClockTimes: true, contractedHours: "", days: JSON.parse(JSON.stringify(DEFAULTS)) };
   }
 
   let state = loadState();
@@ -438,6 +467,8 @@
   locationInput.value = state.location ?? 0.90;
   holidayLocationInput.checked = state.includeLocationOnHoliday !== false;
   document.getElementById("weekStartInput").value = state.weekStart || "";
+  document.getElementById("roundClockInput").checked = state.roundClockTimes !== false;
+  contractedHoursInput.value = state.contractedHours || "";
 
   function timeToMinutes(t){
     if(!t) return null;
@@ -445,12 +476,46 @@
     return h*60+m;
   }
 
+  // Tesco-style clocking: rounds to 15-minute blocks, but conservatively —
+  // clocking IN only rounds down to the block if you're within 3 min late,
+  // otherwise it rounds UP to the next block. Clocking OUT is the mirror:
+  // it only rounds up to the block if you're within 3 min early, otherwise
+  // it rounds DOWN to the last completed block.
+  function roundClockIn(mins){
+    const prior = Math.floor(mins/15)*15;
+    const diff = mins - prior;
+    return diff <= 3 ? prior : prior+15;
+  }
+  function roundClockOut(mins){
+    const prior = Math.floor(mins/15)*15;
+    const next = prior+15;
+    const diffToNext = next - mins;
+    return diffToNext <= 3 ? next : prior;
+  }
+
+  function minutesToTime(mins){
+    mins = ((mins%1440)+1440)%1440;
+    const h = Math.floor(mins/60);
+    const m = mins%60;
+    return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+  }
+
+  function paidClockTimes(day){
+    let startM = timeToMinutes(day.start);
+    let endM = timeToMinutes(day.end);
+    if(startM === null || endM === null) return null;
+    let endAdj = endM < startM ? endM+24*60 : endM;
+    if(state.roundClockTimes){
+      startM = roundClockIn(startM);
+      endAdj = roundClockOut(endAdj);
+    }
+    return { startM, endM: endAdj };
+  }
+
   function dayHours(day){
-    const startM = timeToMinutes(day.start);
-    const endM = timeToMinutes(day.end);
-    if(startM === null || endM === null) return 0;
-    let diff = endM - startM;
-    if(diff < 0) diff += 24*60; // overnight shift
+    const t = paidClockTimes(day);
+    if(!t) return 0;
+    let diff = t.endM - t.startM;
     diff -= (Number(day.brk)||0);
     return Math.max(diff,0)/60;
   }
@@ -460,6 +525,7 @@
   }
 
   function render(){
+    state.roundClockTimes = roundClockInput.checked;
     daysEl.innerHTML = "";
     DAY_NAMES.forEach(name=>{
       const day = state.days[name];
@@ -483,11 +549,15 @@
 
       let body = "";
       if(mode === "work"){
-        const startM = timeToMinutes(day.start) ?? 0;
-        let endM = timeToMinutes(day.end) ?? 0;
-        if(endM < startM) endM += 24*60;
-        const barLeft = (startM/1440*100).toFixed(2);
-        const barWidth = Math.max(((endM-startM)/1440*100),1).toFixed(2);
+        const paid = paidClockTimes(day) || { startM:0, endM:0 };
+        const barLeft = (paid.startM/1440*100).toFixed(2);
+        const barWidth = Math.max(((paid.endM-paid.startM)/1440*100),1).toFixed(2);
+        const rawStartM = timeToMinutes(day.start);
+        const rawEndAdj = (timeToMinutes(day.end) < rawStartM) ? timeToMinutes(day.end)+24*60 : timeToMinutes(day.end);
+        const roundedDiffers = state.roundClockTimes && (paid.startM !== rawStartM || paid.endM !== rawEndAdj);
+        const paidNote = roundedDiffers
+          ? `<div style="font-size:11px;color:var(--muted);margin-top:-4px;margin-bottom:8px;">Rounds to paid time: <span style="color:var(--teal);">${minutesToTime(paid.startM)}–${minutesToTime(paid.endM)}</span></div>`
+          : "";
         body = `
           <div class="day-fields">
             <div class="field">
@@ -503,6 +573,7 @@
               <input type="number" class="brk" min="0" step="5" data-day="${name}" data-field="brk" value="${day.brk}">
             </div>
           </div>
+          ${paidNote}
           <div class="bar">
             <div class="bar-ticks"><span></span><span></span><span></span><span></span></div>
             <div class="bar-fill" style="left:${barLeft}%;width:${barWidth}%"></div>
@@ -553,6 +624,31 @@
       `£${basePay.toFixed(2)} base + £${locationPay.toFixed(2)} location`;
 
     state.includeLocationOnHoliday = includeHolLocation;
+    state.contractedHours = contractedHoursInput.value;
+
+    const contracted = Number(contractedHoursInput.value)||0;
+    const banner = document.getElementById("contractedBanner");
+    if(contracted > 0){
+      const diff = totalHours - contracted;
+      const absDiff = Math.abs(diff);
+      let cls, msg;
+      if(Math.abs(diff) < 0.05){
+        cls = "match";
+        msg = "Right on your contracted hours.";
+      }else if(diff > 0){
+        cls = "over";
+        msg = `Over your contracted ${fmtHours(contracted)} hrs by <span class="cb-value">${fmtHours(absDiff)} hrs</span>.`;
+      }else{
+        cls = "under";
+        msg = `Under your contracted ${fmtHours(contracted)} hrs by <span class="cb-value">${fmtHours(absDiff)} hrs</span>.`;
+      }
+      banner.className = "contracted-banner " + cls;
+      banner.innerHTML = `<span>${msg}</span><span class="cb-value">${fmtHours(totalHours)} / ${fmtHours(contracted)} hrs</span>`;
+      banner.style.display = "flex";
+    }else{
+      banner.style.display = "none";
+    }
+
     save();
   }
 
@@ -595,6 +691,16 @@
     render();
   });
 
+  roundClockInput.addEventListener("change", ()=>{
+    state.roundClockTimes = roundClockInput.checked;
+    render();
+  });
+
+  contractedHoursInput.addEventListener("input", ()=>{
+    state.contractedHours = contractedHoursInput.value;
+    render();
+  });
+
   rateInput.addEventListener("input", ()=>{
     state.rate = rateInput.value;
     render();
@@ -606,7 +712,7 @@
   });
 
   document.getElementById("resetBtn").addEventListener("click", ()=>{
-    state = { rate: rateInput.value || 15.01, location: locationInput.value || 0.90, includeLocationOnHoliday: holidayLocationInput.checked, days: JSON.parse(JSON.stringify(DEFAULTS)) };
+    state = { rate: rateInput.value || 15.01, location: locationInput.value || 0.90, includeLocationOnHoliday: holidayLocationInput.checked, roundClockTimes: roundClockInput.checked, contractedHours: contractedHoursInput.value, days: JSON.parse(JSON.stringify(DEFAULTS)) };
     Object.keys(state.days).forEach(d => state.days[d].mode = "off");
     render();
   });
@@ -630,7 +736,9 @@
         workedHours += h;
         const brk = Number(day.brk)||0;
         const brkTxt = brk ? ` (-${brk}min break)` : "";
-        lines.push(`${name.padEnd(10)} ${day.start}-${day.end}${brkTxt}  ->  ${fmtHours(h)} hrs`);
+        const paid = paidClockTimes(day);
+        const paidTxt = (state.roundClockTimes && paid) ? ` [paid ${minutesToTime(paid.startM)}-${minutesToTime(paid.endM)}]` : "";
+        lines.push(`${name.padEnd(10)} ${day.start}-${day.end}${brkTxt}${paidTxt}  ->  ${fmtHours(h)} hrs`);
       }else if(day.mode === "holiday"){
         const h = Number(day.holidayHours)||0;
         holidayHours += h;
@@ -653,12 +761,22 @@
       ? `Total hours: ${fmtHours(totalHours)} (${fmtHours(workedHours)} worked + ${fmtHours(holidayHours)} holiday)`
       : `Total hours: ${fmtHours(totalHours)}`;
 
+    const contracted = Number(contractedHoursInput.value)||0;
+    let contractedLine = "";
+    if(contracted > 0){
+      const diff = totalHours - contracted;
+      if(Math.abs(diff) < 0.05) contractedLine = `Contracted hours: ${fmtHours(contracted)} — right on target`;
+      else if(diff > 0) contractedLine = `Contracted hours: ${fmtHours(contracted)} — over by ${fmtHours(diff)} hrs`;
+      else contractedLine = `Contracted hours: ${fmtHours(contracted)} — under by ${fmtHours(Math.abs(diff))} hrs`;
+    }
+
     return [
       weekLabel,
       "",
       ...lines,
       "",
       hoursLine,
+      ...(contractedLine ? [contractedLine] : []),
       `Rate: £${rate.toFixed(2)}/hr + £${location.toFixed(2)}/hr location`,
       `Base pay: £${basePay.toFixed(2)}`,
       `Location pay: £${locationPay.toFixed(2)}`,

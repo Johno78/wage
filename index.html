@@ -272,6 +272,57 @@
   .contracted-banner.match{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);}
   .contracted-banner .cb-value{font-family:'JetBrains Mono',monospace;font-weight:700;}
 
+  .payperiod-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    margin-bottom:20px;
+  }
+  .payperiod-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .pp-nav{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--muted);
+    width:32px;height:32px;
+    border-radius:8px;
+    font-size:16px;
+    cursor:pointer;
+    flex:none;
+  }
+  .pp-nav:hover{border-color:var(--amber);color:var(--amber);}
+  .payperiod-main{flex:1;text-align:center;}
+  .pp-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:2px;
+  }
+  .pp-range{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:15px;
+    font-weight:700;
+  }
+  .pp-dates{
+    display:flex;
+    justify-content:center;
+    gap:22px;
+    margin-top:10px;
+    font-size:12px;
+    color:var(--muted);
+  }
+  .pp-dates div{display:flex;align-items:center;gap:6px;}
+  .pp-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .pp-dot.cutoff{background:var(--red);}
+  .pp-dot.payday{background:var(--teal);}
+  .pp-dates span:last-child{color:var(--text);font-family:'JetBrains Mono',monospace;}
+
   .export-row{
     display:flex;
     gap:10px;
@@ -369,6 +420,21 @@
     <div>
       <label for="contractedHoursInput">Contracted hours /wk</label>
       <input type="number" id="contractedHoursInput" class="week-date" step="0.5" min="0" placeholder="e.g. 20.5" style="width:100px;">
+    </div>
+  </div>
+
+  <div class="payperiod-card">
+    <div class="payperiod-row">
+      <button type="button" class="pp-nav" id="ppPrev" title="Previous pay period">‹</button>
+      <div class="payperiod-main">
+        <div class="pp-label">4-Week Pay Period</div>
+        <div class="pp-range" id="ppRange">–</div>
+      </div>
+      <button type="button" class="pp-nav" id="ppNext" title="Next pay period">›</button>
+    </div>
+    <div class="pp-dates">
+      <div><span class="pp-dot cutoff"></span>Cut-off <span id="ppCutoff">–</span></div>
+      <div><span class="pp-dot payday"></span>Pay date <span id="ppPayday">–</span></div>
     </div>
   </div>
 
@@ -498,6 +564,38 @@
     const h = Math.floor(mins/60);
     const m = mins%60;
     return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+  }
+
+  // Tesco's 4-weekly pay cycle, confirmed against the actual Work & Pay schedule:
+  // each period runs Sunday to Saturday (28 days), cut-off is the Friday 7 days
+  // before payday, and payday is the Friday of the period's final week (the day
+  // before the period technically closes). Anchor: period starting 19 Jul 2026
+  // (Tax Week 20, 2026) ran to 15 Aug 2026, cut-off 7 Aug, paid 14 Aug 2026.
+  // Note: around Christmas/New Year, Tesco sometimes brings payday forward a
+  // day or two to avoid a bank holiday — always double-check Work & Pay then.
+  const PAY_PERIOD_ANCHOR_UTC_DAYS = Date.UTC(2026,6,19)/86400000; // 19 Jul 2026
+
+  function utcDayNum(dateObj){
+    return Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate())/86400000;
+  }
+  function dayNumToDate(dayNum){
+    return new Date(dayNum*86400000);
+  }
+  function computePayPeriod(dateObj){
+    const dayNum = utcDayNum(dateObj);
+    const diff = dayNum - PAY_PERIOD_ANCHOR_UTC_DAYS;
+    const periodIndex = Math.floor(diff/28);
+    const startDay = PAY_PERIOD_ANCHOR_UTC_DAYS + periodIndex*28;
+    return {
+      index: periodIndex,
+      start: dayNumToDate(startDay),
+      end: dayNumToDate(startDay+27),
+      cutoff: dayNumToDate(startDay+19),
+      payday: dayNumToDate(startDay+26),
+    };
+  }
+  function fmtDateUTC(d, opts){
+    return d.toLocaleDateString("en-GB", { timeZone:"UTC", ...opts });
   }
 
   function paidClockTimes(day){
@@ -720,6 +818,42 @@
   document.getElementById("weekStartInput").addEventListener("input", e=>{
     state.weekStart = e.target.value;
     save();
+    renderPayPeriod();
+  });
+
+  function referenceDateForPeriod(){
+    const v = document.getElementById("weekStartInput").value;
+    if(v) return new Date(v+"T00:00:00");
+    return new Date();
+  }
+
+  function renderPayPeriod(){
+    const period = computePayPeriod(referenceDateForPeriod());
+    const opts = { day:"numeric", month:"short" };
+    const rangeText = `${fmtDateUTC(period.start,opts)} – ${fmtDateUTC(period.end,{...opts, year:"numeric"})}`;
+    document.getElementById("ppRange").textContent = rangeText;
+    document.getElementById("ppCutoff").textContent = fmtDateUTC(period.cutoff,{weekday:"short",day:"numeric",month:"short"});
+    document.getElementById("ppPayday").textContent = fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+  }
+
+  document.getElementById("ppPrev").addEventListener("click", ()=>{
+    const d = referenceDateForPeriod();
+    d.setDate(d.getDate()-28);
+    const iso = d.toISOString().slice(0,10);
+    document.getElementById("weekStartInput").value = iso;
+    state.weekStart = iso;
+    save();
+    renderPayPeriod();
+  });
+
+  document.getElementById("ppNext").addEventListener("click", ()=>{
+    const d = referenceDateForPeriod();
+    d.setDate(d.getDate()+28);
+    const iso = d.toISOString().slice(0,10);
+    document.getElementById("weekStartInput").value = iso;
+    state.weekStart = iso;
+    save();
+    renderPayPeriod();
   });
 
   function buildSummaryText(){
@@ -770,8 +904,13 @@
       else contractedLine = `Contracted hours: ${fmtHours(contracted)} — under by ${fmtHours(Math.abs(diff))} hrs`;
     }
 
+    const period = computePayPeriod(referenceDateForPeriod());
+    const dOpts = { day:"numeric", month:"short", year:"numeric" };
+    const periodLine = `Pay period: ${fmtDateUTC(period.start,dOpts)} – ${fmtDateUTC(period.end,dOpts)}  |  Cut-off: ${fmtDateUTC(period.cutoff,dOpts)}  |  Pay date: ${fmtDateUTC(period.payday,dOpts)}`;
+
     return [
       weekLabel,
+      periodLine,
       "",
       ...lines,
       "",
@@ -824,6 +963,7 @@
   });
 
   render();
+  renderPayPeriod();
 </script>
 </body>
 </html>

@@ -312,16 +312,65 @@
   .pp-dates{
     display:flex;
     justify-content:center;
-    gap:22px;
+    flex-wrap:wrap;
+    gap:14px 18px;
     margin-top:10px;
     font-size:12px;
     color:var(--muted);
   }
   .pp-dates div{display:flex;align-items:center;gap:6px;}
   .pp-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .pp-dot.lastday{background:var(--amber);}
   .pp-dot.cutoff{background:var(--red);}
   .pp-dot.payday{background:var(--teal);}
   .pp-dates span:last-child{color:var(--text);font-family:'JetBrains Mono',monospace;}
+
+  .week-tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:14px;
+    overflow-x:auto;
+  }
+  .week-tab{
+    flex:1;
+    min-width:78px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 6px;
+    text-align:center;
+    cursor:pointer;
+    color:var(--muted);
+  }
+  .week-tab .wt-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:9.5px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    margin-bottom:2px;
+  }
+  .week-tab .wt-dates{font-size:11px;font-weight:600;}
+  .week-tab .wt-total{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
+  .week-tab.active{border-color:var(--amber);background:var(--amber-dim);color:var(--amber);}
+  .week-tab.active .wt-total{color:var(--amber);}
+
+  .period-total-card{
+    background:var(--panel);
+    border:1px solid var(--teal);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-top:14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .period-total-card .ptc-label{
+    font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  }
+  .period-total-card .ptc-value{
+    font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--teal);
+  }
+  .period-total-card .ptc-sub{font-size:11px;color:var(--muted);margin-top:2px;}
 
   .export-row{
     display:flex;
@@ -433,6 +482,7 @@
       <button type="button" class="pp-nav" id="ppNext" title="Next pay period">›</button>
     </div>
     <div class="pp-dates">
+      <div><span class="pp-dot lastday"></span>Last working day <span id="ppLastDay">–</span></div>
       <div><span class="pp-dot cutoff"></span>Cut-off <span id="ppCutoff">–</span></div>
       <div><span class="pp-dot payday"></span>Pay date <span id="ppPayday">–</span></div>
     </div>
@@ -442,6 +492,8 @@
     <input type="checkbox" id="roundClockInput" checked>
     Round to 15-min clocking blocks (3 min grace: late arrivals within grace round down, early finishes within grace round up — otherwise it rounds against you)
   </label>
+
+  <div class="week-tabs" id="weekTabs"></div>
 
   <div id="days"></div>
 
@@ -465,6 +517,14 @@
   </div>
 
   <div id="contractedBanner" style="display:none;"></div>
+
+  <div class="period-total-card">
+    <div>
+      <div class="ptc-label">Pay period total (all 4 weeks)</div>
+      <div class="ptc-sub" id="periodTotalSub">–</div>
+    </div>
+    <div class="ptc-value" id="periodTotalPay">£0.00</div>
+  </div>
 
   <div class="export-row">
     <button id="shareBtn" class="export-btn primary">Save / Share week</button>
@@ -513,19 +573,41 @@
     return day;
   }
 
+  function currentDays(){
+    return state.periodWeeks[state.currentWeekIndex];
+  }
+
   function loadState(){
     try{
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if(saved && saved.days && saved.rate){
-        DAY_NAMES.forEach(name=>{
-          saved.days[name] = migrateDay(saved.days[name] || JSON.parse(JSON.stringify(DEFAULTS[name])));
+      if(saved && saved.rate){
+        if(!Array.isArray(saved.periodWeeks)){
+          // migrate old single-week format
+          const oldDays = saved.days || JSON.parse(JSON.stringify(DEFAULTS));
+          saved.periodWeeks = [oldDays, JSON.parse(JSON.stringify(DEFAULTS)), JSON.parse(JSON.stringify(DEFAULTS)), JSON.parse(JSON.stringify(DEFAULTS))];
+          delete saved.days;
+        }
+        saved.periodWeeks.forEach(week=>{
+          DAY_NAMES.forEach(name=>{
+            week[name] = migrateDay(week[name] || JSON.parse(JSON.stringify(DEFAULTS[name])));
+          });
         });
+        if(saved.currentWeekIndex === undefined) saved.currentWeekIndex = 0;
         if(saved.includeLocationOnHoliday === undefined) saved.includeLocationOnHoliday = true;
         if(saved.roundClockTimes === undefined) saved.roundClockTimes = true;
         return saved;
       }
     }catch(e){}
-    return { rate: 15.01, location: 0.90, includeLocationOnHoliday: true, roundClockTimes: true, contractedHours: "", days: JSON.parse(JSON.stringify(DEFAULTS)) };
+    return {
+      rate: 15.01, location: 0.90, includeLocationOnHoliday: true, roundClockTimes: true, contractedHours: "",
+      currentWeekIndex: 0,
+      periodWeeks: [
+        JSON.parse(JSON.stringify(DEFAULTS)),
+        JSON.parse(JSON.stringify(DEFAULTS)),
+        JSON.parse(JSON.stringify(DEFAULTS)),
+        JSON.parse(JSON.stringify(DEFAULTS)),
+      ],
+    };
   }
 
   let state = loadState();
@@ -626,7 +708,7 @@
     state.roundClockTimes = roundClockInput.checked;
     daysEl.innerHTML = "";
     DAY_NAMES.forEach(name=>{
-      const day = state.days[name];
+      const day = currentDays()[name];
       const mode = day.mode;
       const workHours = mode === "work" ? dayHours(day) : 0;
       const holHours = mode === "holiday" ? (Number(day.holidayHours)||0) : 0;
@@ -699,20 +781,26 @@
     });
 
     // totals
-    let workedHours = 0, holidayHours = 0;
-    DAY_NAMES.forEach(name=>{
-      const day = state.days[name];
-      if(day.mode === "work") workedHours += dayHours(day);
-      if(day.mode === "holiday") holidayHours += (Number(day.holidayHours)||0);
-    });
-    const totalHours = workedHours + holidayHours;
     const rate = Number(rateInput.value)||0;
     const location = Number(locationInput.value)||0;
     const includeHolLocation = holidayLocationInput.checked;
 
-    const basePay = totalHours*rate;
-    const locationPay = workedHours*location + (includeHolLocation ? holidayHours*location : 0);
-    const totalPay = basePay+locationPay;
+    function computeWeekTotals(weekDays){
+      let workedHours = 0, holidayHours = 0;
+      DAY_NAMES.forEach(name=>{
+        const day = weekDays[name];
+        if(day.mode === "work") workedHours += dayHours(day);
+        if(day.mode === "holiday") holidayHours += (Number(day.holidayHours)||0);
+      });
+      const totalHours = workedHours + holidayHours;
+      const basePay = totalHours*rate;
+      const locationPay = workedHours*location + (includeHolLocation ? holidayHours*location : 0);
+      return { workedHours, holidayHours, totalHours, basePay, locationPay, totalPay: basePay+locationPay };
+    }
+    window._computeWeekTotals = computeWeekTotals;
+
+    const wk = computeWeekTotals(currentDays());
+    const { workedHours, holidayHours, totalHours, basePay, locationPay, totalPay } = wk;
 
     totalHoursEl.textContent = fmtHours(totalHours);
     document.getElementById("hoursBreakdown").textContent =
@@ -747,7 +835,48 @@
       banner.style.display = "none";
     }
 
+    renderWeekTabs();
+    renderPeriodTotal();
     save();
+  }
+
+  function renderWeekTabs(){
+    const tabsEl = document.getElementById("weekTabs");
+    const period = computePayPeriod(referenceDateForPeriod());
+    tabsEl.innerHTML = "";
+    for(let i=0;i<4;i++){
+      const weekStartDay = utcDayNum(period.start) + i*7;
+      const weekStartDate = dayNumToDate(weekStartDay);
+      const weekEndDate = dayNumToDate(weekStartDay+6);
+      const wk = window._computeWeekTotals ? window._computeWeekTotals(state.periodWeeks[i]) : null;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "week-tab" + (i===state.currentWeekIndex ? " active" : "");
+      btn.innerHTML = `
+        <div class="wt-label">Week ${i+1}</div>
+        <div class="wt-dates">${fmtDateUTC(weekStartDate,{day:"numeric",month:"short"})}–${fmtDateUTC(weekEndDate,{day:"numeric",month:"short"})}</div>
+        <div class="wt-total">${wk ? fmtHours(wk.totalHours)+" hrs" : ""}</div>
+      `;
+      btn.addEventListener("click", ()=>{
+        state.currentWeekIndex = i;
+        render();
+      });
+      tabsEl.appendChild(btn);
+    }
+  }
+
+  function renderPeriodTotal(){
+    if(!window._computeWeekTotals) return;
+    let hours=0, pay=0;
+    state.periodWeeks.forEach(week=>{
+      const wk = window._computeWeekTotals(week);
+      hours += wk.totalHours;
+      pay += wk.totalPay;
+    });
+    const period = computePayPeriod(referenceDateForPeriod());
+    document.getElementById("periodTotalPay").textContent = "£"+pay.toFixed(2);
+    document.getElementById("periodTotalSub").textContent =
+      `${fmtHours(hours)} hrs across all 4 weeks · paid ${fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short"})}`;
   }
 
   function save(){
@@ -761,7 +890,7 @@
     if(!btn) return;
     const dayName = btn.dataset.day;
     const newMode = btn.dataset.mode;
-    const day = state.days[dayName];
+    const day = currentDays()[dayName];
     if(newMode === "holiday" && day.mode !== "holiday"){
       // Prefill holiday hours from this day's own shift pattern (start/end/break)
       const shiftHours = dayHours(day);
@@ -777,9 +906,9 @@
     const field = t.dataset.field;
     if(!dayName || !field) return;
     if(field === "brk" || field === "holidayHours"){
-      state.days[dayName][field] = t.value;
+      currentDays()[dayName][field] = t.value;
     }else{
-      state.days[dayName][field] = t.value;
+      currentDays()[dayName][field] = t.value;
     }
     render();
   });
@@ -810,8 +939,8 @@
   });
 
   document.getElementById("resetBtn").addEventListener("click", ()=>{
-    state = { rate: rateInput.value || 15.01, location: locationInput.value || 0.90, includeLocationOnHoliday: holidayLocationInput.checked, roundClockTimes: roundClockInput.checked, contractedHours: contractedHoursInput.value, days: JSON.parse(JSON.stringify(DEFAULTS)) };
-    Object.keys(state.days).forEach(d => state.days[d].mode = "off");
+    state.periodWeeks[state.currentWeekIndex] = JSON.parse(JSON.stringify(DEFAULTS));
+    Object.keys(currentDays()).forEach(d => currentDays()[d].mode = "off");
     render();
   });
 
@@ -819,6 +948,8 @@
     state.weekStart = e.target.value;
     save();
     renderPayPeriod();
+    renderWeekTabs();
+    renderPeriodTotal();
   });
 
   function referenceDateForPeriod(){
@@ -832,6 +963,8 @@
     const opts = { day:"numeric", month:"short" };
     const rangeText = `${fmtDateUTC(period.start,opts)} – ${fmtDateUTC(period.end,{...opts, year:"numeric"})}`;
     document.getElementById("ppRange").textContent = rangeText;
+    const lastWorkingDay = dayNumToDate(utcDayNum(period.cutoff)-1);
+    document.getElementById("ppLastDay").textContent = fmtDateUTC(lastWorkingDay,{weekday:"short",day:"numeric",month:"short"});
     document.getElementById("ppCutoff").textContent = fmtDateUTC(period.cutoff,{weekday:"short",day:"numeric",month:"short"});
     document.getElementById("ppPayday").textContent = fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short",year:"numeric"});
   }
@@ -844,6 +977,8 @@
     state.weekStart = iso;
     save();
     renderPayPeriod();
+    renderWeekTabs();
+    renderPeriodTotal();
   });
 
   document.getElementById("ppNext").addEventListener("click", ()=>{
@@ -854,6 +989,8 @@
     state.weekStart = iso;
     save();
     renderPayPeriod();
+    renderWeekTabs();
+    renderPeriodTotal();
   });
 
   function buildSummaryText(){
@@ -864,7 +1001,7 @@
     const lines = [];
 
     DAY_NAMES.forEach(name=>{
-      const day = state.days[name];
+      const day = currentDays()[name];
       if(day.mode === "work"){
         const h = dayHours(day);
         workedHours += h;
@@ -886,10 +1023,11 @@
     const basePay = totalHours*rate;
     const locationPay = workedHours*location + (includeHolLocation ? holidayHours*location : 0);
     const total = basePay+locationPay;
-    const weekStart = state.weekStart ? new Date(state.weekStart+"T00:00:00") : null;
-    const weekLabel = weekStart
-      ? "Week starting " + weekStart.toLocaleDateString("en-GB",{ day:"numeric", month:"long", year:"numeric" })
-      : "Weekly Earnings";
+    const period = computePayPeriod(referenceDateForPeriod());
+    const wkStartDay = utcDayNum(period.start) + state.currentWeekIndex*7;
+    const wkStartDate = dayNumToDate(wkStartDay);
+    const wkEndDate = dayNumToDate(wkStartDay+6);
+    const weekLabel = `Week ${state.currentWeekIndex+1} of pay period — ${fmtDateUTC(wkStartDate,{day:"numeric",month:"long",year:"numeric"})} to ${fmtDateUTC(wkEndDate,{day:"numeric",month:"long",year:"numeric"})}`;
 
     const hoursLine = holidayHours > 0
       ? `Total hours: ${fmtHours(totalHours)} (${fmtHours(workedHours)} worked + ${fmtHours(holidayHours)} holiday)`
@@ -904,9 +1042,22 @@
       else contractedLine = `Contracted hours: ${fmtHours(contracted)} — under by ${fmtHours(Math.abs(diff))} hrs`;
     }
 
-    const period = computePayPeriod(referenceDateForPeriod());
     const dOpts = { day:"numeric", month:"short", year:"numeric" };
     const periodLine = `Pay period: ${fmtDateUTC(period.start,dOpts)} – ${fmtDateUTC(period.end,dOpts)}  |  Cut-off: ${fmtDateUTC(period.cutoff,dOpts)}  |  Pay date: ${fmtDateUTC(period.payday,dOpts)}`;
+
+    let periodTotalLines = [];
+    if(window._computeWeekTotals){
+      let periodHours=0, periodPay=0;
+      state.periodWeeks.forEach(week=>{
+        const wk = window._computeWeekTotals(week);
+        periodHours += wk.totalHours;
+        periodPay += wk.totalPay;
+      });
+      periodTotalLines = [
+        "",
+        `PAY PERIOD TOTAL (all 4 weeks): ${fmtHours(periodHours)} hrs — £${periodPay.toFixed(2)}`,
+      ];
+    }
 
     return [
       weekLabel,
@@ -920,6 +1071,7 @@
       `Base pay: £${basePay.toFixed(2)}`,
       `Location pay: £${locationPay.toFixed(2)}`,
       `Total pay: £${total.toFixed(2)}`,
+      ...periodTotalLines,
     ].join("\n");
   }
 

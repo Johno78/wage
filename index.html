@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+  // Apply theme before first paint to avoid a flash of the wrong theme.
+  (function(){
+    try{
+      var saved = localStorage.getItem("weekly-earnings-theme");
+      var theme = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.setAttribute("data-theme", theme);
+    }catch(e){}
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,6 +32,19 @@
     --red:#e0616b;
     --radius:10px;
   }
+  html[data-theme="light"]{
+    --ink:#f4f5f7;
+    --panel:#ffffff;
+    --panel-2:#eef0f3;
+    --line:#dde1e7;
+    --text:#1b1e26;
+    --muted:#6b7280;
+    --amber:#c9800a;
+    --amber-dim:#c9800a22;
+    --teal:#0f9d80;
+    --red:#c73f4d;
+  }
+  html[data-theme="light"] .bar-ticks span{border-right-color:#0000000f;}
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
@@ -34,11 +57,30 @@
   .wrap{max-width:640px;margin:0 auto;}
 
   header{margin-bottom:28px;}
+  .header-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .theme-toggle{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--muted);
+    width:34px;
+    height:34px;
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    flex:none;
+  }
+  .theme-toggle:hover{border-color:var(--amber);color:var(--amber);}
   .brand{
     display:flex;
     align-items:center;
     gap:8px;
-    margin-bottom:14px;
   }
   .brand-icon{width:20px;height:20px;flex:none;}
   .brand-label{
@@ -435,12 +477,18 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="brand">
-      <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="20" cy="20" r="17" stroke="#f2a63d" stroke-width="2.5"/>
-        <path d="M20 10v10l7 4" stroke="#5ec8b0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <span class="brand-label">Timesheet</span>
+    <div class="header-top">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="20" cy="20" r="17" stroke="#f2a63d" stroke-width="2.5"/>
+          <path d="M20 10v10l7 4" stroke="#5ec8b0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-label">Timesheet</span>
+      </div>
+      <button type="button" id="themeToggle" class="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle light/dark theme">
+        <svg id="themeIconMoon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="themeIconSun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
     </div>
     <p class="eyebrow">Timesheet → Pay</p>
     <h1>Weekly Earnings</h1>
@@ -476,13 +524,12 @@
     <div class="payperiod-row">
       <button type="button" class="pp-nav" id="ppPrev" title="Previous pay period">‹</button>
       <div class="payperiod-main">
-        <div class="pp-label">4-Week Pay Period</div>
+        <div class="pp-label">4-Week Working Window</div>
         <div class="pp-range" id="ppRange">–</div>
       </div>
       <button type="button" class="pp-nav" id="ppNext" title="Next pay period">›</button>
     </div>
     <div class="pp-dates">
-      <div><span class="pp-dot lastday"></span>Last working day <span id="ppLastDay">–</span></div>
       <div><span class="pp-dot cutoff"></span>Cut-off <span id="ppCutoff">–</span></div>
       <div><span class="pp-dot payday"></span>Pay date <span id="ppPayday">–</span></div>
     </div>
@@ -648,14 +695,18 @@
     return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
   }
 
-  // Tesco's 4-weekly pay cycle, confirmed against the actual Work & Pay schedule:
-  // each period runs Sunday to Saturday (28 days), cut-off is the Friday 7 days
-  // before payday, and payday is the Friday of the period's final week (the day
-  // before the period technically closes). Anchor: period starting 19 Jul 2026
-  // (Tax Week 20, 2026) ran to 15 Aug 2026, cut-off 7 Aug, paid 14 Aug 2026.
+  // Tesco's 4-weekly pay cycle — confirmed directly against real experience:
+  // the cut-off genuinely cuts off which hours count. The true 4-week WORKING
+  // WINDOW runs Friday to Thursday (the day after one cut-off through the day
+  // before the next) — not the Sunday-to-Saturday shown in the official Work &
+  // Pay table, which only labels the tax/payroll accounting period. Anything
+  // worked on or after a cut-off Friday rolls into the NEXT payday instead.
+  // Confirmed anchor: working window 7 Aug–3 Sep 2026 (Fri–Thu), cut-off
+  // 4 Sep 2026, paid 11 Sep 2026 — verified against the actual Work & Pay
+  // schedule and the person's own confirmed last-working-day experience.
   // Note: around Christmas/New Year, Tesco sometimes brings payday forward a
   // day or two to avoid a bank holiday — always double-check Work & Pay then.
-  const PAY_PERIOD_ANCHOR_UTC_DAYS = Date.UTC(2026,6,19)/86400000; // 19 Jul 2026
+  const PAY_PERIOD_ANCHOR_UTC_DAYS = Date.UTC(2026,6,10)/86400000; // Fri 10 Jul 2026
 
   function utcDayNum(dateObj){
     return Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate())/86400000;
@@ -670,10 +721,10 @@
     const startDay = PAY_PERIOD_ANCHOR_UTC_DAYS + periodIndex*28;
     return {
       index: periodIndex,
-      start: dayNumToDate(startDay),
-      end: dayNumToDate(startDay+27),
-      cutoff: dayNumToDate(startDay+19),
-      payday: dayNumToDate(startDay+26),
+      start: dayNumToDate(startDay),       // Friday — first day of the working window
+      end: dayNumToDate(startDay+27),      // Thursday — last working day counted
+      cutoff: dayNumToDate(startDay+28),   // Friday — submission deadline
+      payday: dayNumToDate(startDay+35),   // Friday — payday
     };
   }
   function fmtDateUTC(d, opts){
@@ -963,8 +1014,6 @@
     const opts = { day:"numeric", month:"short" };
     const rangeText = `${fmtDateUTC(period.start,opts)} – ${fmtDateUTC(period.end,{...opts, year:"numeric"})}`;
     document.getElementById("ppRange").textContent = rangeText;
-    const lastWorkingDay = dayNumToDate(utcDayNum(period.cutoff)-1);
-    document.getElementById("ppLastDay").textContent = fmtDateUTC(lastWorkingDay,{weekday:"short",day:"numeric",month:"short"});
     document.getElementById("ppCutoff").textContent = fmtDateUTC(period.cutoff,{weekday:"short",day:"numeric",month:"short"});
     document.getElementById("ppPayday").textContent = fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short",year:"numeric"});
   }
@@ -1113,6 +1162,22 @@
     URL.revokeObjectURL(url);
     showHint('Downloaded - on iPhone, choose "Save to Files" when prompted.');
   });
+
+  function applyThemeIcon(theme){
+    document.getElementById("themeIconMoon").style.display = theme === "light" ? "none" : "block";
+    document.getElementById("themeIconSun").style.display = theme === "light" ? "block" : "none";
+  }
+
+  (function initTheme(){
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
+    applyThemeIcon(current);
+    document.getElementById("themeToggle").addEventListener("click", ()=>{
+      const now = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", now);
+      applyThemeIcon(now);
+      try{ localStorage.setItem("weekly-earnings-theme", now); }catch(e){}
+    });
+  })();
 
   render();
   renderPayPeriod();

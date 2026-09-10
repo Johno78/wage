@@ -212,6 +212,68 @@
     gap:3px;
   }
   .field label{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+  .field .hint{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:14px;
+  }
+  .card h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    letter-spacing:.02em;
+    margin:0 0 12px;
+  }
+  .field-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:10px;
+  }
+  .field-row:last-child{margin-bottom:0;}
+  .field-row .field{flex:1;min-width:130px;}
+  .field-row input[type="number"]{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:6px;
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    padding:8px 10px;
+    width:100%;
+  }
+  .field-row input[type="number"]:focus{outline:none;border-color:var(--amber);}
+
+  .extras-card{padding:14px 16px;}
+  .extras-toggle{
+    width:100%;
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    text-align:left;
+    cursor:pointer;
+    padding:0;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .extras-toggle:hover{color:var(--amber);}
+  .extras-toggle-hint{font-size:11px;font-weight:400;color:var(--muted);}
+  .extras-toggle.has-values span:first-child{color:var(--amber);}
+  .extras-body{
+    display:none;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .extras-body.open{display:block;}
   input[type="time"], input[type="number"].brk{
     background:var(--panel-2);
     border:1px solid var(--line);
@@ -366,6 +428,31 @@
   .pp-dot.cutoff{background:var(--red);}
   .pp-dot.payday{background:var(--teal);}
   .pp-dates span:last-child{color:var(--text);font-family:'JetBrains Mono',monospace;}
+
+  .pp-today-btn{
+    display:block;
+    width:100%;
+    margin-top:12px;
+    background:var(--panel-2);
+    border:1px dashed var(--line);
+    color:var(--muted);
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    padding:8px;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .pp-today-btn:hover{border-color:var(--amber);color:var(--amber);}
+  .pp-today-btn.hidden{display:none;}
+  .payperiod-card.not-current{border-color:var(--amber);}
+  .pp-not-current-flag{
+    text-align:center;
+    font-size:11px;
+    color:var(--amber);
+    margin-top:8px;
+    display:none;
+  }
+  .pp-not-current-flag.show{display:block;}
 
   .week-tabs{
     display:flex;
@@ -533,6 +620,8 @@
       <div><span class="pp-dot cutoff"></span>Cut-off <span id="ppCutoff">–</span></div>
       <div><span class="pp-dot payday"></span>Pay date <span id="ppPayday">–</span></div>
     </div>
+    <div class="pp-not-current-flag" id="ppNotCurrentFlag">You're viewing a different period than today's</div>
+    <button type="button" id="ppToday" class="pp-today-btn hidden">Jump to current period</button>
   </div>
 
   <label class="options-row">
@@ -565,9 +654,44 @@
 
   <div id="contractedBanner" style="display:none;"></div>
 
+  <div class="card extras-card">
+    <button type="button" id="extrasToggle" class="extras-toggle">
+      <span>+ Overtime, bank holiday pay or hour adjustments</span>
+      <span class="extras-toggle-hint">(optional — only if this period has any)</span>
+    </button>
+    <div id="extrasBody" class="extras-body">
+      <div class="field-row">
+        <div class="field">
+          <label for="overtimeHoursInput">Overtime hours</label>
+          <input type="number" id="overtimeHoursInput" min="0" step="0.25" value="0">
+        </div>
+        <div class="field">
+          <label for="sundayOvertimeHoursInput">Sunday overtime hours</label>
+          <input type="number" id="sundayOvertimeHoursInput" min="0" step="0.25" value="0">
+        </div>
+        <div class="field">
+          <label for="overtimeMultiplierInput">Overtime rate (%)</label>
+          <input type="number" id="overtimeMultiplierInput" min="0" step="5" value="100">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="bankHolidayPayInput">Bank holiday pay (£)</label>
+          <input type="number" id="bankHolidayPayInput" min="0" step="0.01" value="0">
+          <span class="hint">Enter the amount Tesco pays — this is worked out from average earnings, not a simple hours × rate sum, so it can't be calculated here.</span>
+        </div>
+        <div class="field">
+          <label for="minusHoursInput">Minus hours (deduction)</label>
+          <input type="number" id="minusHoursInput" min="0" step="0.25" value="0">
+          <span class="hint">Deducted at your base rate only (no location pay), matching how it appears on your payslip.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="period-total-card">
     <div>
-      <div class="ptc-label">Pay period total (all 4 weeks)</div>
+      <div class="ptc-label">Pay period total (all 4 weeks + extras)</div>
       <div class="ptc-sub" id="periodTotalSub">–</div>
     </div>
     <div class="ptc-value" id="periodTotalPay">£0.00</div>
@@ -608,6 +732,11 @@
   const holidayLocationInput = document.getElementById("holidayLocationInput");
   const roundClockInput = document.getElementById("roundClockInput");
   const contractedHoursInput = document.getElementById("contractedHoursInput");
+  const overtimeHoursInput = document.getElementById("overtimeHoursInput");
+  const sundayOvertimeHoursInput = document.getElementById("sundayOvertimeHoursInput");
+  const overtimeMultiplierInput = document.getElementById("overtimeMultiplierInput");
+  const bankHolidayPayInput = document.getElementById("bankHolidayPayInput");
+  const minusHoursInput = document.getElementById("minusHoursInput");
   const totalHoursEl = document.getElementById("totalHours");
   const totalPayEl = document.getElementById("totalPay");
 
@@ -642,11 +771,17 @@
         if(saved.currentWeekIndex === undefined) saved.currentWeekIndex = 0;
         if(saved.includeLocationOnHoliday === undefined) saved.includeLocationOnHoliday = true;
         if(saved.roundClockTimes === undefined) saved.roundClockTimes = true;
+        if(saved.overtimeHours === undefined) saved.overtimeHours = 0;
+        if(saved.sundayOvertimeHours === undefined) saved.sundayOvertimeHours = 0;
+        if(saved.overtimeMultiplier === undefined) saved.overtimeMultiplier = 100;
+        if(saved.bankHolidayPay === undefined) saved.bankHolidayPay = 0;
+        if(saved.minusHours === undefined) saved.minusHours = 0;
         return saved;
       }
     }catch(e){}
     return {
       rate: 15.01, location: 0.90, includeLocationOnHoliday: true, roundClockTimes: true, contractedHours: "",
+      overtimeHours: 0, sundayOvertimeHours: 0, overtimeMultiplier: 100, bankHolidayPay: 0, minusHours: 0,
       currentWeekIndex: 0,
       periodWeeks: [
         JSON.parse(JSON.stringify(DEFAULTS)),
@@ -664,6 +799,11 @@
   document.getElementById("weekStartInput").value = state.weekStart || "";
   document.getElementById("roundClockInput").checked = state.roundClockTimes !== false;
   contractedHoursInput.value = state.contractedHours || "";
+  overtimeHoursInput.value = state.overtimeHours || 0;
+  sundayOvertimeHoursInput.value = state.sundayOvertimeHours || 0;
+  overtimeMultiplierInput.value = state.overtimeMultiplier ?? 100;
+  bankHolidayPayInput.value = state.bankHolidayPay || 0;
+  minusHoursInput.value = state.minusHours || 0;
 
   function timeToMinutes(t){
     if(!t) return null;
@@ -916,6 +1056,22 @@
     }
   }
 
+  function computeExtras(){
+    const rate = Number(rateInput.value)||0;
+    const otHours = Number(overtimeHoursInput.value)||0;
+    const sunOtHours = Number(sundayOvertimeHoursInput.value)||0;
+    const otMultiplier = (Number(overtimeMultiplierInput.value)||0)/100;
+    const bankHolidayPay = Number(bankHolidayPayInput.value)||0;
+    const minusHours = Number(minusHoursInput.value)||0;
+
+    const overtimePay = (otHours + sunOtHours) * rate * otMultiplier;
+    const minusHoursPay = -(minusHours * rate);
+    const extraHours = otHours + sunOtHours - minusHours;
+    const extraPay = overtimePay + minusHoursPay + bankHolidayPay;
+
+    return { otHours, sunOtHours, overtimePay, bankHolidayPay, minusHours, minusHoursPay, extraHours, extraPay };
+  }
+
   function renderPeriodTotal(){
     if(!window._computeWeekTotals) return;
     let hours=0, pay=0;
@@ -924,10 +1080,25 @@
       hours += wk.totalHours;
       pay += wk.totalPay;
     });
+
+    const extras = computeExtras();
+    hours += extras.extraHours;
+    pay += extras.extraPay;
+
     const period = computePayPeriod(referenceDateForPeriod());
     document.getElementById("periodTotalPay").textContent = "£"+pay.toFixed(2);
+    const extrasNote = (extras.extraHours !== 0 || extras.bankHolidayPay !== 0)
+      ? ` (incl. ${extras.overtimePay>=0?"+":""}£${extras.overtimePay.toFixed(2)} OT, £${extras.bankHolidayPay.toFixed(2)} bank hol, -£${Math.abs(extras.minusHoursPay).toFixed(2)} minus hrs)`
+      : "";
     document.getElementById("periodTotalSub").textContent =
-      `${fmtHours(hours)} hrs across all 4 weeks · paid ${fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short"})}`;
+      `${fmtHours(hours)} hrs across all 4 weeks · paid ${fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short"})}${extrasNote}`;
+
+    state.overtimeHours = overtimeHoursInput.value;
+    state.sundayOvertimeHours = sundayOvertimeHoursInput.value;
+    state.overtimeMultiplier = overtimeMultiplierInput.value;
+    state.bankHolidayPay = bankHolidayPayInput.value;
+    state.minusHours = minusHoursInput.value;
+    save();
   }
 
   function save(){
@@ -979,6 +1150,33 @@
     render();
   });
 
+  [overtimeHoursInput, sundayOvertimeHoursInput, overtimeMultiplierInput, bankHolidayPayInput, minusHoursInput]
+    .forEach(el => el.addEventListener("input", renderPeriodTotal));
+
+  function extrasHaveValues(){
+    return (Number(overtimeHoursInput.value)||0) !== 0
+      || (Number(sundayOvertimeHoursInput.value)||0) !== 0
+      || (Number(bankHolidayPayInput.value)||0) !== 0
+      || (Number(minusHoursInput.value)||0) !== 0;
+  }
+
+  function refreshExtrasToggleLabel(){
+    const toggle = document.getElementById("extrasToggle");
+    const hasValues = extrasHaveValues();
+    toggle.classList.toggle("has-values", hasValues);
+    toggle.querySelector("span:first-child").textContent =
+      (document.getElementById("extrasBody").classList.contains("open") ? "− " : "+ ") +
+      (hasValues ? "Overtime, bank holiday pay or hour adjustments (set)" : "Overtime, bank holiday pay or hour adjustments");
+  }
+
+  document.getElementById("extrasToggle").addEventListener("click", ()=>{
+    document.getElementById("extrasBody").classList.toggle("open");
+    refreshExtrasToggleLabel();
+  });
+
+  [overtimeHoursInput, sundayOvertimeHoursInput, bankHolidayPayInput, minusHoursInput]
+    .forEach(el => el.addEventListener("input", refreshExtrasToggleLabel));
+
   rateInput.addEventListener("input", ()=>{
     state.rate = rateInput.value;
     render();
@@ -1016,7 +1214,23 @@
     document.getElementById("ppRange").textContent = rangeText;
     document.getElementById("ppCutoff").textContent = fmtDateUTC(period.cutoff,{weekday:"short",day:"numeric",month:"short"});
     document.getElementById("ppPayday").textContent = fmtDateUTC(period.payday,{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+
+    const todayPeriod = computePayPeriod(new Date());
+    const isCurrent = period.index === todayPeriod.index;
+    document.getElementById("ppNotCurrentFlag").classList.toggle("show", !isCurrent);
+    document.getElementById("ppToday").classList.toggle("hidden", isCurrent);
+    document.querySelector(".payperiod-card").classList.toggle("not-current", !isCurrent);
   }
+
+  document.getElementById("ppToday").addEventListener("click", ()=>{
+    const iso = new Date().toISOString().slice(0,10);
+    document.getElementById("weekStartInput").value = iso;
+    state.weekStart = iso;
+    save();
+    renderPayPeriod();
+    renderWeekTabs();
+    renderPeriodTotal();
+  });
 
   document.getElementById("ppPrev").addEventListener("click", ()=>{
     const d = referenceDateForPeriod();
@@ -1102,9 +1316,14 @@
         periodHours += wk.totalHours;
         periodPay += wk.totalPay;
       });
+      const extras = computeExtras();
       periodTotalLines = [
         "",
-        `PAY PERIOD TOTAL (all 4 weeks): ${fmtHours(periodHours)} hrs — £${periodPay.toFixed(2)}`,
+        `Overtime: ${fmtHours(extras.otHours)} hrs + Sunday OT ${fmtHours(extras.sunOtHours)} hrs @ ${overtimeMultiplierInput.value}% — £${extras.overtimePay.toFixed(2)}`,
+        `Bank holiday pay: £${extras.bankHolidayPay.toFixed(2)}`,
+        `Minus hours: -${fmtHours(extras.minusHours)} hrs — -£${Math.abs(extras.minusHoursPay).toFixed(2)}`,
+        "",
+        `PAY PERIOD TOTAL (all 4 weeks + extras): ${fmtHours(periodHours+extras.extraHours)} hrs — £${(periodPay+extras.extraPay).toFixed(2)}`,
       ];
     }
 
@@ -1181,6 +1400,10 @@
 
   render();
   renderPayPeriod();
+  if(extrasHaveValues()){
+    document.getElementById("extrasBody").classList.add("open");
+  }
+  refreshExtrasToggleLabel();
 </script>
 </body>
 </html>

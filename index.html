@@ -712,6 +712,11 @@
 
 <script>
   const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+  // Pay weeks run Friday -> Thursday (the day after cut-off to the day before the next
+  // cut-off), not the calendar Monday -> Sunday week. Use this order for anything the
+  // user looks at (day list, exported summary) so the days appear in the order they're
+  // actually worked, with the real date shown against each one.
+  const WORK_WEEK_ORDER = ["Friday","Saturday","Sunday","Monday","Tuesday","Wednesday","Thursday"];
 
   // Default example shifts — fully editable, nothing personal.
   // mode: "off" | "work" | "holiday"
@@ -898,11 +903,15 @@
   function render(){
     state.roundClockTimes = roundClockInput.checked;
     daysEl.innerHTML = "";
-    DAY_NAMES.forEach(name=>{
+    const periodForDays = computePayPeriod(referenceDateForPeriod());
+    const weekStartDayNum = utcDayNum(periodForDays.start) + state.currentWeekIndex*7;
+    WORK_WEEK_ORDER.forEach((name, idx)=>{
       const day = currentDays()[name];
       const mode = day.mode;
       const workHours = mode === "work" ? dayHours(day) : 0;
       const holHours = mode === "holiday" ? (Number(day.holidayHours)||0) : 0;
+      const dayDate = dayNumToDate(weekStartDayNum + idx);
+      const dateLabel = fmtDateUTC(dayDate, {day:"numeric", month:"short"});
 
       const card = document.createElement("div");
       card.className = "day" + (mode === "off" ? " off" : "") + (mode === "holiday" ? " holiday" : "");
@@ -962,7 +971,7 @@
 
       card.innerHTML = `
         <div class="day-top">
-          <div class="day-name">${name}</div>
+          <div class="day-name">${name} <span style="color:var(--muted);font-weight:400;">${dateLabel}</span></div>
           ${modeSwitch}
         </div>
         <div class="day-hours" style="margin-bottom:8px;">${hoursLabel}</div>
@@ -1262,9 +1271,13 @@
     const includeHolLocation = holidayLocationInput.checked;
     let workedHours = 0, holidayHours = 0;
     const lines = [];
+    const period = computePayPeriod(referenceDateForPeriod());
+    const summaryWeekStartDayNum = utcDayNum(period.start) + state.currentWeekIndex*7;
 
-    DAY_NAMES.forEach(name=>{
+    WORK_WEEK_ORDER.forEach((name, idx)=>{
       const day = currentDays()[name];
+      const dLabel = fmtDateUTC(dayNumToDate(summaryWeekStartDayNum+idx), {day:"numeric", month:"short"});
+      const nameCol = `${name} (${dLabel})`.padEnd(18);
       if(day.mode === "work"){
         const h = dayHours(day);
         workedHours += h;
@@ -1272,13 +1285,13 @@
         const brkTxt = brk ? ` (-${brk}min break)` : "";
         const paid = paidClockTimes(day);
         const paidTxt = (state.roundClockTimes && paid) ? ` [paid ${minutesToTime(paid.startM)}-${minutesToTime(paid.endM)}]` : "";
-        lines.push(`${name.padEnd(10)} ${day.start}-${day.end}${brkTxt}${paidTxt}  ->  ${fmtHours(h)} hrs`);
+        lines.push(`${nameCol} ${day.start}-${day.end}${brkTxt}${paidTxt}  ->  ${fmtHours(h)} hrs`);
       }else if(day.mode === "holiday"){
         const h = Number(day.holidayHours)||0;
         holidayHours += h;
-        lines.push(`${name.padEnd(10)} Paid holiday  ->  ${fmtHours(h)} hrs`);
+        lines.push(`${nameCol} Paid holiday  ->  ${fmtHours(h)} hrs`);
       }else{
-        lines.push(`${name.padEnd(10)} Off`);
+        lines.push(`${nameCol} Off`);
       }
     });
 
@@ -1286,7 +1299,6 @@
     const basePay = totalHours*rate;
     const locationPay = workedHours*location + (includeHolLocation ? holidayHours*location : 0);
     const total = basePay+locationPay;
-    const period = computePayPeriod(referenceDateForPeriod());
     const wkStartDay = utcDayNum(period.start) + state.currentWeekIndex*7;
     const wkStartDate = dayNumToDate(wkStartDay);
     const wkEndDate = dayNumToDate(wkStartDay+6);
